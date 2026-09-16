@@ -38,16 +38,26 @@ def calculate_age(birthdate):
 
 
 def get_age_group(age):
-    if pd.isna(age): return "ไม่ทราบ"
+    """จัดกลุ่มอายุเป็นช่วงละ 10 ปี"""
+    if pd.isna(age):
+        return "ไม่ทราบ"
     age = int(age)
-    if age < 20: return "ต่ำกว่า 20"
-    elif age <= 24: return "20-24"
-    elif age <= 29: return "25-29"
-    elif age <= 34: return "30-34"
-    elif age <= 39: return "35-39"
-    elif age <= 49: return "40-49"
-    elif age <= 59: return "50-59"
-    return "60 ปีขึ้นไป"
+    if age < 20:
+        return "ต่ำกว่า 20"
+    elif age <= 29:
+        return "20-29"
+    elif age <= 39:
+        return "30-39"
+    elif age <= 49:
+        return "40-49"
+    elif age <= 59:
+        return "50-59"
+    elif age <= 69:
+        return "60-69"
+    elif age <= 79:
+        return "70-79"
+    else:
+        return "80 ปีขึ้นไป"
 
 
 def get_gender(prefix):
@@ -103,9 +113,7 @@ def run_etl(uploaded_file):
             df["Major"].astype("string")
             .str.replace(r"\b(?:Doctor|Master)\s+of\b", "", regex=True, flags=re.IGNORECASE)
             .str.replace(r"\b(?:Type|Plan)\b\s*[^,;|/]*", "", regex=True, flags=re.IGNORECASE)
-            # Handles: (Revised), (Revised version 2025), ( revised version 2025 )
             .str.replace(r"\(\s*Revised\b[^)]*\)", "", regex=True, flags=re.IGNORECASE)
-            # Remove a trailing comma left after removing the Revised text.
             .str.replace(r"\s*,\s*$", "", regex=True)
             .str.replace(r"\s+", " ", regex=True)
             .str.strip()
