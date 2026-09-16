@@ -96,13 +96,17 @@ def run_etl(uploaded_file):
         level_mapping = {"Doctoral Degree": "Doctoral", "Master's Degree": "Master"}
         df["Level"] = df["Level"].replace(level_mapping)
 
-    # Create Major1: remove Doctor of / Master of, Type / Plan and (Revised)
+    # Create Major1 from Major
+    # Remove Doctor of / Master of, Type / Plan and any parenthetical Revised text.
     if "Major" in df.columns:
         df["Major1"] = (
             df["Major"].astype("string")
             .str.replace(r"\b(?:Doctor|Master)\s+of\b", "", regex=True, flags=re.IGNORECASE)
             .str.replace(r"\b(?:Type|Plan)\b\s*[^,;|/]*", "", regex=True, flags=re.IGNORECASE)
-            .str.replace(r"\(\s*Revised\s*\)", "", regex=True, flags=re.IGNORECASE)
+            # Handles: (Revised), (Revised version 2025), ( revised version 2025 )
+            .str.replace(r"\(\s*Revised\b[^)]*\)", "", regex=True, flags=re.IGNORECASE)
+            # Remove a trailing comma left after removing the Revised text.
+            .str.replace(r"\s*,\s*$", "", regex=True)
             .str.replace(r"\s+", " ", regex=True)
             .str.strip()
             .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
