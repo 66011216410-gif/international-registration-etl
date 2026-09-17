@@ -173,16 +173,6 @@ def run_etl(uploaded_file):
             .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
         )
 
-    # กฎใหม่: ถ้า "สถานะนิสิต" ไม่ใช่ "สำเร็จการศึกษา"
-    # ให้ล้าง วันที่จบ / เทอมที่จบ / ปีที่จบ ของนิสิตคนนั้นทันที
-    if "สถานะนิสิต" in df.columns:
-        status_clean = df["สถานะนิสิต"].astype("string").str.strip()
-        not_graduated = status_clean.ne("สำเร็จการศึกษา") & status_clean.notna()
-        graduation_columns = ["วันที่จบ", "เทอมที่จบ", "ปีที่จบ"]
-        existing_graduation_columns = [col for col in graduation_columns if col in df.columns]
-        if existing_graduation_columns:
-            df.loc[not_graduated, existing_graduation_columns] = pd.NA
-
     duplicate_count = int(df.duplicated().sum())
     df = df.drop_duplicates().reset_index(drop=True)
     missing_total = int(df.isna().sum().sum())
