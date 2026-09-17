@@ -176,6 +176,18 @@ def get_gender(prefix):
     return "Unknown"
 
 
+def remove_test_no_273(df):
+    """ตัดข้อมูล Test ที่มี No. = 273 ออกจากข้อมูล"""
+    if "No." not in df.columns:
+        return df.copy(), 0
+
+    no_numeric = pd.to_numeric(df["No."], errors="coerce")
+    no_text = df["No."].astype("string").str.strip()
+    test_mask = no_numeric.eq(273) | no_text.eq("273")
+    removed = int(test_mask.sum())
+    return df.loc[~test_mask].copy(), removed
+
+
 def run_etl(uploaded_file):
     uploaded_file.seek(0)
     df = pd.read_excel(uploaded_file)
@@ -183,6 +195,9 @@ def run_etl(uploaded_file):
     columns_before = len(df.columns)
 
     df.columns = df.columns.astype(str).str.replace(r"\s+", " ", regex=True).str.strip()
+
+    # ตัดข้อมูล Test No.273 ออกจากไฟล์ใหม่ทันที
+    df, test_rows_removed = remove_test_no_273(df)
 
     text_columns = [
         "Prefix", "First Name", "Last Name", "Occupation", "Address",
@@ -242,6 +257,7 @@ def run_etl(uploaded_file):
         "columns_after": len(df.columns),
         "duplicates_removed": duplicate_count,
         "missing_values": missing_total,
+        "test_rows_removed": test_rows_removed,
     }
     return df, summary
 
@@ -274,7 +290,7 @@ st.subheader("📂 1. อัปโหลดข้อมูลใหม่")
 uploaded_file = st.file_uploader(
     "เลือกไฟล์ Excel ที่ต้องการเพิ่มเข้าระบบ",
     type=["xlsx", "xls"],
-    help="ระบบจะ ETL ข้อมูลใหม่ แล้วนำไปต่อกับ master_etl.xlsx ที่บันทึกไว้ใน GitHub"
+    help="ระบบจะ ETL ข้อมูลใหม่ แล้วนำไปต่อกับ master_etl.xlsx ที่บันทึกไว้ใน GitHub โดยจะไม่รับข้อมูล Test No.273"
 )
 
 if uploaded_file is not None:
@@ -288,7 +304,11 @@ if uploaded_file is not None:
             with st.spinner("กำลังโหลดข้อมูลเดิมจาก GitHub..."):
                 old_df, old_sha = load_master_file()
 
+            old_test_rows_removed = 0
             if old_df is not None:
+                # ลบ No.273 ที่อาจเคยอยู่ใน Master เดิมด้วย
+                old_df, old_test_rows_removed = remove_test_no_273(old_df)
+
                 # รวมข้อมูลเก่า + ข้อมูลใหม่ และลบแถวที่ซ้ำกัน
                 combined_df = pd.concat([old_df, new_df], ignore_index=True, sort=False)
                 before_dedup = len(combined_df)
@@ -305,12 +325,14 @@ if uploaded_file is not None:
                 save_master_file(combined_df, old_sha)
 
             quality = create_data_quality(combined_df)
+            total_test_removed = new_summary["test_rows_removed"] + old_test_rows_removed
             summary = {
                 "new_rows": len(new_df),
                 "old_rows": old_rows,
                 "rows_after": len(combined_df),
                 "duplicates_removed": duplicates_removed,
                 "missing_values": int(combined_df.isna().sum().sum()),
+                "test_rows_removed": total_test_removed,
             }
 
             st.session_state["etl_df"] = combined_df
@@ -318,7 +340,7 @@ if uploaded_file is not None:
             st.session_state["summary"] = summary
             st.session_state["source_name"] = uploaded_file.name
 
-            st.success("🎉 ETL สำเร็จ และบันทึกข้อมูลสะสมลง GitHub แล้ว!")
+            st.success("🎉 ETL สำเร็จ และบันทึกข้อมูลสะสมลง GitHub แล้ว! ข้อมูล Test No.273 ถูกตัดออกแล้ว")
 
         except Exception as e:
             st.error(f"❌ เกิดข้อผิดพลาด: {e}")
@@ -336,7 +358,7 @@ if "etl_df" in st.session_state:
     st.divider()
     st.subheader("📊 2. ผลการประมวลผล")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("ข้อมูลใหม่", f"{summary['new_rows']:,}")
     with col2:
@@ -345,6 +367,8 @@ if "etl_df" in st.session_state:
         st.metric("ข้อมูลสะสมทั้งหมด", f"{summary['rows_after']:,}")
     with col4:
         st.metric("ข้อมูลซ้ำที่ไม่เพิ่ม", f"{summary['duplicates_removed']:,}")
+    with col5:
+        st.metric("Test No.273 ที่ตัดออก", f"{summary['test_rows_removed']:,}")
 
     st.subheader("👁️ 3. ข้อมูลสะสมหลัง ETL")
     st.dataframe(df.head(20), use_container_width=True, height=400)
@@ -363,5 +387,3 @@ if "etl_df" in st.session_state:
     )
 
     st.success("ข้อมูลสะสมถูกบันทึกไว้ใน GitHub และพร้อมดาวน์โหลด")
-else:
-    st.info("📌 อัปโหลดไฟล์ข้อมูลใหม่ แล้วกด 🚀 เริ่ม ETL และบันทึกข้อมูล")
