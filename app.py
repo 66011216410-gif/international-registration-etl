@@ -24,9 +24,6 @@ st.markdown('<div class="main-title">🌏 INTERNATIONAL REGISTRATION ETL SYSTEM<
 st.markdown('<div class="sub-title">ระบบ ETL ข้อมูลผู้สมัครนักศึกษาต่างชาติ</div>', unsafe_allow_html=True)
 st.divider()
 
-# ============================================================
-# GITHUB MASTER FILE SETTINGS
-# ============================================================
 GITHUB_OWNER = "66011216410-gif"
 GITHUB_REPO = "international-registration-etl"
 GITHUB_BRANCH = "main"
@@ -34,7 +31,6 @@ MASTER_FILE = "master_etl.xlsx"
 
 
 def get_github_token():
-    """อ่าน GitHub token จาก Streamlit Secrets"""
     try:
         return st.secrets.get("GITHUB_TOKEN", "")
     except Exception:
@@ -49,26 +45,16 @@ def github_request(url, method="GET", data=None, token=None):
     }
     if token:
         headers["Authorization"] = f"Bearer {token}"
-
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def load_master_file():
-    """โหลดไฟล์ ETL สะสมจาก GitHub ถ้ามี"""
     token = get_github_token()
     if not token:
-        raise RuntimeError(
-            "ยังไม่ได้ตั้งค่า GITHUB_TOKEN ใน Streamlit Secrets "
-            "จึงไม่สามารถบันทึกข้อมูลสะสมลง GitHub ได้"
-        )
-
-    url = (
-        f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
-        f"/contents/{MASTER_FILE}?ref={GITHUB_BRANCH}"
-    )
-
+        raise RuntimeError("ยังไม่ได้ตั้งค่า GITHUB_TOKEN ใน Streamlit Secrets จึงไม่สามารถบันทึกข้อมูลสะสมลง GitHub ได้")
+    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{MASTER_FILE}?ref={GITHUB_BRANCH}"
     try:
         result = github_request(url, token=token)
         content = base64.b64decode(result["content"].replace("\n", ""))
@@ -81,53 +67,26 @@ def load_master_file():
 
 
 def save_master_file(df, file_sha=None):
-    """บันทึกไฟล์ ETL สะสมกลับไปที่ GitHub"""
     token = get_github_token()
     if not token:
-        raise RuntimeError(
-            "ยังไม่ได้ตั้งค่า GITHUB_TOKEN ใน Streamlit Secrets "
-            "จึงไม่สามารถบันทึกข้อมูลลง GitHub ได้"
-        )
-
+        raise RuntimeError("ยังไม่ได้ตั้งค่า GITHUB_TOKEN ใน Streamlit Secrets จึงไม่สามารถบันทึกข้อมูลลง GitHub ได้")
     quality = create_data_quality(df)
     excel_data = create_excel(df, quality)
     encoded = base64.b64encode(excel_data).decode("utf-8")
-
-    url = (
-        f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
-        f"/contents/{MASTER_FILE}"
-    )
-
-    payload = {
-        "message": "Update master ETL data",
-        "content": encoded,
-        "branch": GITHUB_BRANCH,
-    }
+    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/contents/{MASTER_FILE}"
+    payload = {"message": "Update master ETL data", "content": encoded, "branch": GITHUB_BRANCH}
     if file_sha:
         payload["sha"] = file_sha
-
     try:
-        result = github_request(
-            url,
-            method="PUT",
-            data=json.dumps(payload).encode("utf-8"),
-            token=token,
-        )
+        result = github_request(url, method="PUT", data=json.dumps(payload).encode("utf-8"), token=token)
         return result.get("content", {}).get("sha")
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(
-            f"บันทึกไฟล์ลง GitHub ไม่สำเร็จ: HTTP {e.code} {error_body[:300]}"
-        )
+        raise RuntimeError(f"บันทึกไฟล์ลง GitHub ไม่สำเร็จ: HTTP {e.code} {error_body[:300]}")
 
 
 def clean_text(series):
-    return (
-        series.astype("string")
-        .str.replace(r"\s+", " ", regex=True)
-        .str.strip()
-        .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
-    )
+    return series.astype("string").str.replace(r"\s+", " ", regex=True).str.strip().replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
 
 
 def calculate_age(birthdate):
@@ -143,49 +102,24 @@ def calculate_age(birthdate):
 
 
 def get_age_group(age):
-    """จัดกลุ่มอายุเป็นช่วงละ 10 ปี"""
-    if pd.isna(age):
-        return "ไม่ทราบ"
+    if pd.isna(age): return "ไม่ทราบ"
     age = int(age)
-    if age < 20:
-        return "ต่ำกว่า 20"
-    elif age <= 29:
-        return "20-29"
-    elif age <= 39:
-        return "30-39"
-    elif age <= 49:
-        return "40-49"
-    elif age <= 59:
-        return "50-59"
-    elif age <= 69:
-        return "60-69"
-    elif age <= 79:
-        return "70-79"
-    else:
-        return "80 ปีขึ้นไป"
+    if age < 20: return "ต่ำกว่า 20"
+    elif age <= 29: return "20-29"
+    elif age <= 39: return "30-39"
+    elif age <= 49: return "40-49"
+    elif age <= 59: return "50-59"
+    elif age <= 69: return "60-69"
+    elif age <= 79: return "70-79"
+    return "80 ปีขึ้นไป"
 
 
 def get_gender(prefix):
-    if pd.isna(prefix):
-        return "Unknown"
+    if pd.isna(prefix): return "Unknown"
     value = re.sub(r"[.\s]+", "", str(prefix).strip().lower())
-    if value == "mr":
-        return "Male"
-    elif value in ["ms", "mrs", "miss"]:
-        return "Female"
+    if value == "mr": return "Male"
+    elif value in ["ms", "mrs", "miss"]: return "Female"
     return "Unknown"
-
-
-def remove_test_no_273(df):
-    """ตัดข้อมูล Test ที่มี No. = 273 ออกจากข้อมูล"""
-    if "No." not in df.columns:
-        return df.copy(), 0
-
-    no_numeric = pd.to_numeric(df["No."], errors="coerce")
-    no_text = df["No."].astype("string").str.strip()
-    test_mask = no_numeric.eq(273) | no_text.eq("273")
-    removed = int(test_mask.sum())
-    return df.loc[~test_mask].copy(), removed
 
 
 def run_etl(uploaded_file):
@@ -197,12 +131,14 @@ def run_etl(uploaded_file):
     df.columns = df.columns.astype(str).str.replace(r"\s+", " ", regex=True).str.strip()
 
     # ตัดข้อมูล Test No.273 ออกจากไฟล์ใหม่ทันที
-    df, test_rows_removed = remove_test_no_273(df)
+    test_rows_removed = 0
+    if "No." in df.columns:
+        no_clean = pd.to_numeric(df["No."], errors="coerce")
+        test_mask = no_clean.eq(273)
+        test_rows_removed = int(test_mask.sum())
+        df = df.loc[~test_mask].copy()
 
-    text_columns = [
-        "Prefix", "First Name", "Last Name", "Occupation", "Address",
-        "Nationality", "University", "Level", "Faculty", "Major", "Major1"
-    ]
+    text_columns = ["Prefix", "First Name", "Last Name", "Occupation", "Address", "Nationality", "University", "Level", "Faculty", "Major", "Major1"]
     for col in text_columns:
         if col in df.columns:
             df[col] = clean_text(df[col])
@@ -212,7 +148,9 @@ def run_etl(uploaded_file):
             df[col] = pd.to_datetime(df[col], errors="coerce")
 
     if "Birthdate" in df.columns:
-        df["Age"] = df["Birthdate"].apply(calculate_age).astype("Int64")
+        df["Age"] = df["Birthdate"].apply(calculate_age)
+        # แก้ปัญหา datetime64[us] cannot be converted to IntegerDtype
+        df["Age"] = pd.to_numeric(df["Age"], errors="coerce").round().astype("Int64")
     if "Age" in df.columns:
         df["Age Group"] = df["Age"].apply(get_age_group)
     if "Prefix" in df.columns:
@@ -232,8 +170,6 @@ def run_etl(uploaded_file):
         level_mapping = {"Doctoral Degree": "Doctoral", "Master's Degree": "Master"}
         df["Level"] = df["Level"].replace(level_mapping)
 
-    # Create Major1 from Major
-    # Remove Doctor of / Master of, Type / Plan and any parenthetical Revised text.
     if "Major" in df.columns:
         df["Major1"] = (
             df["Major"].astype("string")
@@ -263,16 +199,11 @@ def run_etl(uploaded_file):
 
 
 def create_data_quality(df):
-    return pd.DataFrame({
-        "Column": df.columns,
-        "Missing Values": [df[col].isna().sum() for col in df.columns],
-        "Data Type": [str(df[col].dtype) for col in df.columns],
-    })
+    return pd.DataFrame({"Column": df.columns, "Missing Values": [df[col].isna().sum() for col in df.columns], "Data Type": [str(df[col].dtype) for col in df.columns]})
 
 
 def create_excel(df, quality=None):
-    if quality is None:
-        quality = create_data_quality(df)
+    if quality is None: quality = create_data_quality(df)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="ETL_Data")
@@ -281,109 +212,76 @@ def create_excel(df, quality=None):
     return output.getvalue()
 
 
-# ============================================================
-# UPLOAD
-# ============================================================
-
 st.subheader("📂 1. อัปโหลดข้อมูลใหม่")
-
-uploaded_file = st.file_uploader(
-    "เลือกไฟล์ Excel ที่ต้องการเพิ่มเข้าระบบ",
-    type=["xlsx", "xls"],
-    help="ระบบจะ ETL ข้อมูลใหม่ แล้วนำไปต่อกับ master_etl.xlsx ที่บันทึกไว้ใน GitHub โดยจะไม่รับข้อมูล Test No.273"
-)
+uploaded_file = st.file_uploader("เลือกไฟล์ Excel ที่ต้องการเพิ่มเข้าระบบ", type=["xlsx", "xls"], help="ระบบจะ ETL ข้อมูลใหม่ แล้วนำไปต่อกับ master_etl.xlsx ที่บันทึกไว้ใน GitHub")
 
 if uploaded_file is not None:
     st.success(f"✅ เลือกไฟล์: {uploaded_file.name}")
-
     if st.button("🚀 เริ่ม ETL และบันทึกข้อมูล", type="primary"):
         try:
             with st.spinner("กำลัง ETL ข้อมูลใหม่..."):
                 new_df, new_summary = run_etl(uploaded_file)
-
             with st.spinner("กำลังโหลดข้อมูลเดิมจาก GitHub..."):
                 old_df, old_sha = load_master_file()
 
-            old_test_rows_removed = 0
             if old_df is not None:
-                # ลบ No.273 ที่อาจเคยอยู่ใน Master เดิมด้วย
-                old_df, old_test_rows_removed = remove_test_no_273(old_df)
-
-                # รวมข้อมูลเก่า + ข้อมูลใหม่ และลบแถวที่ซ้ำกัน
+                # ป้องกัน No.273 ที่อาจมีอยู่ใน Master เดิมด้วย
+                master_test_removed = 0
+                if "No." in old_df.columns:
+                    old_no = pd.to_numeric(old_df["No."], errors="coerce")
+                    master_test_mask = old_no.eq(273)
+                    master_test_removed = int(master_test_mask.sum())
+                    old_df = old_df.loc[~master_test_mask].copy()
                 combined_df = pd.concat([old_df, new_df], ignore_index=True, sort=False)
                 before_dedup = len(combined_df)
                 combined_df = combined_df.drop_duplicates().reset_index(drop=True)
                 duplicates_removed = before_dedup - len(combined_df)
                 old_rows = len(old_df)
             else:
+                master_test_removed = 0
                 combined_df = new_df.copy()
                 duplicates_removed = int(new_df.duplicated().sum())
                 old_rows = 0
 
-            # บันทึก master file กลับไป GitHub
             with st.spinner("กำลังบันทึกข้อมูลสะสมลง GitHub..."):
                 save_master_file(combined_df, old_sha)
 
             quality = create_data_quality(combined_df)
-            total_test_removed = new_summary["test_rows_removed"] + old_test_rows_removed
             summary = {
                 "new_rows": len(new_df),
                 "old_rows": old_rows,
                 "rows_after": len(combined_df),
                 "duplicates_removed": duplicates_removed,
                 "missing_values": int(combined_df.isna().sum().sum()),
-                "test_rows_removed": total_test_removed,
+                "test_rows_removed": new_summary.get("test_rows_removed", 0) + master_test_removed,
             }
-
             st.session_state["etl_df"] = combined_df
             st.session_state["quality"] = quality
             st.session_state["summary"] = summary
             st.session_state["source_name"] = uploaded_file.name
-
-            st.success("🎉 ETL สำเร็จ และบันทึกข้อมูลสะสมลง GitHub แล้ว! ข้อมูล Test No.273 ถูกตัดออกแล้ว")
-
+            st.success("🎉 ETL สำเร็จ และบันทึกข้อมูลสะสมลง GitHub แล้ว!")
+            if summary["test_rows_removed"] > 0:
+                st.info(f"🧪 ตัดข้อมูล Test No.273 ออกแล้ว {summary['test_rows_removed']:,} รายการ")
         except Exception as e:
             st.error(f"❌ เกิดข้อผิดพลาด: {e}")
 
-
-# ============================================================
-# RESULT
-# ============================================================
 
 if "etl_df" in st.session_state:
     df = st.session_state["etl_df"]
     quality = st.session_state["quality"]
     summary = st.session_state["summary"]
-
     st.divider()
     st.subheader("📊 2. ผลการประมวลผล")
-
-    col1, col2, col3, col4, col5 = st.columns(5)
-    with col1:
-        st.metric("ข้อมูลใหม่", f"{summary['new_rows']:,}")
-    with col2:
-        st.metric("ข้อมูลเดิม", f"{summary['old_rows']:,}")
-    with col3:
-        st.metric("ข้อมูลสะสมทั้งหมด", f"{summary['rows_after']:,}")
-    with col4:
-        st.metric("ข้อมูลซ้ำที่ไม่เพิ่ม", f"{summary['duplicates_removed']:,}")
-    with col5:
-        st.metric("Test No.273 ที่ตัดออก", f"{summary['test_rows_removed']:,}")
-
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: st.metric("ข้อมูลใหม่", f"{summary['new_rows']:,}")
+    with col2: st.metric("ข้อมูลเดิม", f"{summary['old_rows']:,}")
+    with col3: st.metric("ข้อมูลสะสมทั้งหมด", f"{summary['rows_after']:,}")
+    with col4: st.metric("ข้อมูลซ้ำที่ไม่เพิ่ม", f"{summary['duplicates_removed']:,}")
     st.subheader("👁️ 3. ข้อมูลสะสมหลัง ETL")
     st.dataframe(df.head(20), use_container_width=True, height=400)
-
     st.subheader("🔍 4. ตรวจสอบคุณภาพข้อมูล")
     st.dataframe(quality, use_container_width=True)
-
     st.subheader("⬇️ 5. ดาวน์โหลดข้อมูลสะสม")
     excel_data = create_excel(df, quality)
-    st.download_button(
-        label="⬇️ ดาวน์โหลด master_etl.xlsx",
-        data=excel_data,
-        file_name="master_etl.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-
+    st.download_button(label="⬇️ ดาวน์โหลด master_etl.xlsx", data=excel_data, file_name="master_etl.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
     st.success("ข้อมูลสะสมถูกบันทึกไว้ใน GitHub และพร้อมดาวน์โหลด")
