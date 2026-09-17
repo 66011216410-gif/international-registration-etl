@@ -130,14 +130,6 @@ def run_etl(uploaded_file):
 
     df.columns = df.columns.astype(str).str.replace(r"\s+", " ", regex=True).str.strip()
 
-    # ตัดข้อมูล Test No.273 ออกจากไฟล์ใหม่ทันที
-    test_rows_removed = 0
-    if "No." in df.columns:
-        no_clean = pd.to_numeric(df["No."], errors="coerce")
-        test_mask = no_clean.eq(273)
-        test_rows_removed = int(test_mask.sum())
-        df = df.loc[~test_mask].copy()
-
     text_columns = ["Prefix", "First Name", "Last Name", "Occupation", "Address", "Nationality", "University", "Level", "Faculty", "Major", "Major1"]
     for col in text_columns:
         if col in df.columns:
@@ -149,7 +141,6 @@ def run_etl(uploaded_file):
 
     if "Birthdate" in df.columns:
         df["Age"] = df["Birthdate"].apply(calculate_age)
-        # แก้ปัญหา datetime64[us] cannot be converted to IntegerDtype
         df["Age"] = pd.to_numeric(df["Age"], errors="coerce").round().astype("Int64")
     if "Age" in df.columns:
         df["Age Group"] = df["Age"].apply(get_age_group)
@@ -193,7 +184,6 @@ def run_etl(uploaded_file):
         "columns_after": len(df.columns),
         "duplicates_removed": duplicate_count,
         "missing_values": missing_total,
-        "test_rows_removed": test_rows_removed,
     }
     return df, summary
 
@@ -225,20 +215,12 @@ if uploaded_file is not None:
                 old_df, old_sha = load_master_file()
 
             if old_df is not None:
-                # ป้องกัน No.273 ที่อาจมีอยู่ใน Master เดิมด้วย
-                master_test_removed = 0
-                if "No." in old_df.columns:
-                    old_no = pd.to_numeric(old_df["No."], errors="coerce")
-                    master_test_mask = old_no.eq(273)
-                    master_test_removed = int(master_test_mask.sum())
-                    old_df = old_df.loc[~master_test_mask].copy()
                 combined_df = pd.concat([old_df, new_df], ignore_index=True, sort=False)
                 before_dedup = len(combined_df)
                 combined_df = combined_df.drop_duplicates().reset_index(drop=True)
                 duplicates_removed = before_dedup - len(combined_df)
                 old_rows = len(old_df)
             else:
-                master_test_removed = 0
                 combined_df = new_df.copy()
                 duplicates_removed = int(new_df.duplicated().sum())
                 old_rows = 0
@@ -253,15 +235,12 @@ if uploaded_file is not None:
                 "rows_after": len(combined_df),
                 "duplicates_removed": duplicates_removed,
                 "missing_values": int(combined_df.isna().sum().sum()),
-                "test_rows_removed": new_summary.get("test_rows_removed", 0) + master_test_removed,
             }
             st.session_state["etl_df"] = combined_df
             st.session_state["quality"] = quality
             st.session_state["summary"] = summary
             st.session_state["source_name"] = uploaded_file.name
             st.success("🎉 ETL สำเร็จ และบันทึกข้อมูลสะสมลง GitHub แล้ว!")
-            if summary["test_rows_removed"] > 0:
-                st.info(f"🧪 ตัดข้อมูล Test No.273 ออกแล้ว {summary['test_rows_removed']:,} รายการ")
         except Exception as e:
             st.error(f"❌ เกิดข้อผิดพลาด: {e}")
 
